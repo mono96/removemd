@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>マークダウン記法削除ツール</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        <!-- ヘッダー -->
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800 mb-2">マークダウン記法削除ツール</h1>
+            <p class="text-gray-600">マークダウン記法を削除してプレーンテキストに変換します</p>
+        </header>
+
+        <!-- メインコンテンツ -->
+        <main class="bg-white rounded-lg shadow-lg p-6 md:p-8">
+            <!-- 入力エリア -->
+            <div class="mb-6">
+                <label for="input" class="block text-gray-700 font-semibold mb-2">
+                    マークダウンテキストを入力
+                </label>
+                <textarea
+                    id="input"
+                    class="w-full h-64 md:h-96 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                    placeholder="ここにマークダウンテキストを入力してください..."
+                ></textarea>
+            </div>
+
+            <!-- 変換ボタン -->
+            <div class="flex justify-center">
+                <button
+                    id="convertBtn"
+                    class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-lg transition duration-200 shadow-md hover:shadow-lg"
+                >
+                    変換してクリップボードにコピー
+                </button>
+            </div>
+        </main>
+
+        <!-- フッター -->
+        <footer class="text-center mt-8 text-gray-500 text-sm">
+            <p>すべての処理はブラウザ内で完結します。データは保存されません。</p>
+        </footer>
+    </div>
+
+    <!-- コピー完了通知 -->
+    <div
+        id="notification"
+        class="fixed bottom-8 right-8 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg transform translate-y-20 opacity-0 transition-all duration-300"
+    >
+        <span id="notificationText">クリップボードにコピーしました！</span>
+    </div>
+
+    <script>
+        // マークダウン記法を削除する関数
+        function removeMarkdown(text) {
+            let result = text;
+
+            // 画像を削除 ![alt](url)
+            result = result.replace(/!\[.*?\]\(.*?\)/g, '');
+
+            // リンクを変換 [text](url) → text\nurl
+            result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, linkText, url) => {
+                return `${linkText}\n${url}`;
+            });
+
+            // コードブロックを削除（```code```）
+            result = result.replace(/```[\s\S]*?```/g, (match) => {
+                return match.replace(/```(\w+)?\n?/g, '').replace(/```/g, '');
+            });
+
+            // インラインコードを削除（`code`）
+            result = result.replace(/`([^`]+)`/g, '$1');
+
+            // 太字を削除（**text** または __text__）
+            result = result.replace(/(\*\*|__)(.+?)\1/g, '$2');
+
+            // 斜体を削除（*text* または _text_）
+            // 太字の後に処理して、競合を避ける
+            result = result.replace(/(\*|_)(.+?)\1/g, '$2');
+
+            // 見出しを削除（#, ##, など）
+            result = result.replace(/^#{1,6}\s+(.+)$/gm, '$1');
+
+            // 引用を削除（>）
+            result = result.replace(/^>\s+/gm, '');
+
+            // 水平線を削除
+            result = result.replace(/^[-*_]{3,}$/gm, '');
+
+            // 番号付きリストはそのまま保持（1. 2. など）
+            // 何もしない
+
+            // 箇条書きを変換（-, *, + → ・）
+            result = result.replace(/^(\s*)([-*+])\s+/gm, (match, indent, marker) => {
+                return indent + '・ ';
+            });
+
+            // テーブルの処理（簡易的にパイプを削除）
+            result = result.replace(/^\|(.+)\|$/gm, (match, content) => {
+                return content.split('|').map(cell => cell.trim()).join(' ');
+            });
+            // テーブルの区切り行を削除
+            result = result.replace(/^\|?[\s:|-]+\|?$/gm, '');
+
+            // 複数の空行を1つにまとめる
+            result = result.replace(/\n{3,}/g, '\n\n');
+
+            return result.trim();
+        }
+
+        // クリップボードにコピーする関数
+        async function copyToClipboard(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+                return true;
+            } catch (err) {
+                console.error('クリップボードへのコピーに失敗しました:', err);
+                return false;
+            }
+        }
+
+        // 通知を表示する関数
+        function showNotification(message = 'クリップボードにコピーしました！') {
+            const notification = document.getElementById('notification');
+            const notificationText = document.getElementById('notificationText');
+
+            notificationText.textContent = message;
+            notification.classList.remove('translate-y-20', 'opacity-0');
+            notification.classList.add('translate-y-0', 'opacity-100');
+
+            setTimeout(() => {
+                notification.classList.remove('translate-y-0', 'opacity-100');
+                notification.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        // 変換ボタンのクリックイベント
+        document.getElementById('convertBtn').addEventListener('click', async () => {
+            const input = document.getElementById('input').value;
+
+            if (!input.trim()) {
+                showNotification('テキストを入力してください');
+                return;
+            }
+
+            const converted = removeMarkdown(input);
+            const success = await copyToClipboard(converted);
+
+            if (success) {
+                showNotification('クリップボードにコピーしました！');
+            } else {
+                showNotification('コピーに失敗しました');
+            }
+        });
+
+        // Enterキーでの実行を防止（textareaでの改行を許可）
+        document.getElementById('input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                document.getElementById('convertBtn').click();
+            }
+        });
+    </script>
+</body>
+</html>
